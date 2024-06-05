@@ -15,7 +15,12 @@ from .const import DOMAIN
 from .coordinator import SwitchBotCoordinator
 
 _LOGGER = getLogger(__name__)
-PLATFORMS: list[Platform] = [Platform.CLIMATE, Platform.SENSOR, Platform.SWITCH]
+PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
+    Platform.CLIMATE,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 
 @dataclass
@@ -25,6 +30,7 @@ class SwitchbotDevices:
     climates: list[Remote] = field(default_factory=list)
     switches: list[Device | Remote] = field(default_factory=list)
     sensors: list[Device] = field(default_factory=list)
+    buttons: list[Device] = field(default_factory=list)
 
 
 @dataclass
@@ -50,7 +56,7 @@ def prepare_device(
 
 
 @callback
-def make_device_data(
+async def make_device_data(
     hass: HomeAssistant,
     api: SwitchBotAPI,
     devices: list[Device | Remote],
@@ -59,28 +65,40 @@ def make_device_data(
     """Make device data."""
     devices_data = SwitchbotDevices()
     for device in devices:
+        entity_types = []
+
         if isinstance(device, Remote) and device.device_type.endswith(
             "Air Conditioner"
         ):
-            devices_data.climates.append(
-                prepare_device(hass, api, device, coordinators_by_id)
-            )
-        if (
+            # Device is air conditioner
+            entity_types.append(devices_data.climates)
+        elif (
             isinstance(device, Device)
             and device.device_type.startswith("Plug")
             or isinstance(device, Remote)
         ):
-            devices_data.switches.append(
-                prepare_device(hass, api, device, coordinators_by_id)
-            )
-        if isinstance(device, Device) and device.device_type in [
+            # Device is plug
+            entity_types.append(devices_data.switches)
+        elif isinstance(device, Device) and device.device_type == "Bot":
+            # Device is Bot, narrow further based on device mode
+            bot_data: dict = await api.get_status(device.device_id)
+            entity_types.append(devices_data.sensors)
+            if bot_data.get("deviceMode") == "pressMode":
+                entity_types.append(devices_data.buttons)
+            else:
+                # switchMode and customizeMode both behave like switches
+                entity_types.append(devices_data.switches)
+        elif isinstance(device, Device) and device.device_type in [
             "Meter",
             "MeterPlus",
             "WoIOSensor",
         ]:
-            devices_data.sensors.append(
-                prepare_device(hass, api, device, coordinators_by_id)
-            )
+            # Device is sensor
+            entity_types.append(devices_data.sensors)
+
+        for entity_type in entity_types:
+            entity_type.append(prepare_device(hass, api, device, coordinators_by_id))
+
     return devices_data
 
 
@@ -103,7 +121,7 @@ async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry) -> bool:
     coordinators_by_id: dict[str, SwitchBotCoordinator] = {}
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][config.entry_id] = SwitchbotCloudData(
-        api=api, devices=make_device_data(hass, api, devices, coordinators_by_id)
+        api=api, devices=await make_device_data(hass, api, devices, coordinators_by_id)
     )
     await hass.config_entries.async_forward_entry_setups(config, PLATFORMS)
     await gather(

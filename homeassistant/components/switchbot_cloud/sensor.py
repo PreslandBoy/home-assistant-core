@@ -2,45 +2,25 @@
 
 from switchbot_api import Device, SwitchBotAPI
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorEntityDescription,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorEntity, SensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import SwitchbotCloudData
-from .const import DOMAIN
+from .const import (
+    BATTERY_SENSOR_DESCRIPTION,
+    DOMAIN,
+    HUMIDITY_SENSOR_DESCRIPTION,
+    TEMPERATURE_SENSOR_DESCRIPTION,
+)
 from .coordinator import SwitchBotCoordinator
 from .entity import SwitchBotCloudEntity
 
-SENSOR_TYPE_TEMPERATURE = "temperature"
-SENSOR_TYPE_HUMIDITY = "humidity"
-SENSOR_TYPE_BATTERY = "battery"
-
 METER_PLUS_SENSOR_DESCRIPTIONS = (
-    SensorEntityDescription(
-        key=SENSOR_TYPE_TEMPERATURE,
-        device_class=SensorDeviceClass.TEMPERATURE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-    ),
-    SensorEntityDescription(
-        key=SENSOR_TYPE_HUMIDITY,
-        device_class=SensorDeviceClass.HUMIDITY,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=PERCENTAGE,
-    ),
-    SensorEntityDescription(
-        key=SENSOR_TYPE_BATTERY,
-        device_class=SensorDeviceClass.BATTERY,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=PERCENTAGE,
-    ),
+    BATTERY_SENSOR_DESCRIPTION,
+    HUMIDITY_SENSOR_DESCRIPTION,
+    TEMPERATURE_SENSOR_DESCRIPTION,
 )
 
 
@@ -51,12 +31,24 @@ async def async_setup_entry(
 ) -> None:
     """Set up SwitchBot Cloud entry."""
     data: SwitchbotCloudData = hass.data[DOMAIN][config.entry_id]
-
-    async_add_entities(
-        SwitchBotCloudSensor(data.api, device, coordinator, description)
-        for device, coordinator in data.devices.sensors
-        for description in METER_PLUS_SENSOR_DESCRIPTIONS
-    )
+    for device, coordinator in data.devices.sensors:
+        if device.device_type in [
+            "Meter",
+            "MeterPlus",
+            "WoIOSensor",
+        ]:
+            async_add_entities(
+                SwitchBotCloudSensor(data.api, device, coordinator, description)
+                for description in METER_PLUS_SENSOR_DESCRIPTIONS
+            )
+        elif device.device_type == "Bot":
+            async_add_entities(
+                [
+                    SwitchBotCloudSensor(
+                        data.api, device, coordinator, BATTERY_SENSOR_DESCRIPTION
+                    )
+                ]
+            )
 
 
 class SwitchBotCloudSensor(SwitchBotCloudEntity, SensorEntity):

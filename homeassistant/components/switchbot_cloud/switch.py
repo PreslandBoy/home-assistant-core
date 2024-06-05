@@ -73,9 +73,11 @@ class SwitchBotCloudPlugSwitch(SwitchBotCloudSwitch):
 def _async_make_entity(
     api: SwitchBotAPI, device: Device | Remote, coordinator: SwitchBotCoordinator
 ) -> SwitchBotCloudSwitch:
-    """Make a SwitchBotCloudSwitch or SwitchBotCloudRemoteSwitch."""
+    """Make a SwitchBotCloudSwitch, SwitchBotCloudPlugSwitch, or SwitchBotCloudRemoteSwitch."""
     if isinstance(device, Remote):
         return SwitchBotCloudRemoteSwitch(api, device, coordinator)
     if "Plug" in device.device_type:
         return SwitchBotCloudPlugSwitch(api, device, coordinator)
+    if device.device_type == "Bot":
+        return SwitchBotCloudSwitch(api, device, coordinator)
     raise NotImplementedError(f"Unsupported device type: {device.device_type}")
